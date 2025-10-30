@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Soccer Game (Bigger Goals & Double Jump)</title>
+<style>
+  body { margin:0; display:flex; justify-content:center; align-items:center; height:100vh; background:green; font-family:Arial; }
+  canvas { background:#006400; border:3px solid white; display:block; }
+  #menu { text-align:center; color:white; }
+  button { background:white; color:black; border:none; padding:10px 20px; margin:10px; font-size:18px; cursor:pointer; border-radius:8px; }
+  button:hover { background:gold; }
+</style>
+</head>
+<body>
+<div id="menu">
+  <h1>⚽ Soccer Game ⚽</h1>
+  <button onclick="startGame('ai')">Single Player</button>
+  <button onclick="startGame('2p')">Two Player</button>
+  <div id="difficulty" style="display:none;">
+    <h3>Select AI Difficulty</h3>
+    <button onclick="setDifficulty('easy')">Easy</button>
+    <button onclick="setDifficulty('medium')">Medium</button>
+    <button onclick="setDifficulty('hard')">Hard</button>
+  </div>
+</div>
+<canvas id="gameCanvas" width="900" height="500" style="display:none;"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let player1, player2, ball, keys={}, gravity=0.4;
+let gameMode=null, aiDifficulty="medium";
+let aiSpeed=2, aiAggression=0.5;
+let groundY = canvas.height-30, gameRunning=false;
+
+function startGame(mode){
+  if(mode==='ai'){document.getElementById('difficulty').style.display='block';}
+  else {document.getElementById('menu').style.display='none'; canvas.style.display='block'; gameMode='2p'; init();}
+}
+
+function setDifficulty(level){
+  aiDifficulty=level;
+  if(level==='easy'){aiSpeed=2; aiAggression=0.4;}
+  if(level==='medium'){aiSpeed=3; aiAggression=0.6;}
+  if(level==='hard'){aiSpeed=4.5; aiAggression=1;}
+  document.getElementById('menu').style.display='none'; canvas.style.display='block'; gameMode='ai'; init();
+}
+
+function init(){
+  player1={x:100,y:groundY-50,w:30,h:50,color:'blue',dx:0,dy:0,score:0,onGround:false,jumps:0};
+  player2={x:770,y:groundY-50,w:30,h:50,color:'red',dx:0,dy:0,score:0,onGround:false,jumps:0};
+  ball={x:450,y:groundY-40,r:12,dx:0,dy:0,color:'white'};
+  gameRunning=true;
+  requestAnimationFrame(update);
+}
+
+window.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+function applyPhysics(p){
+  p.dy+=gravity;
+  p.y+=p.dy;
+  if(p.y+p.h>=groundY){ p.y=groundY-p.h; p.dy=0; p.onGround=true; p.jumps=0; }
+  else p.onGround=false;
+}
+
+function movePlayers(){
+  player1.dx=0;
+  if(keys['a']) player1.dx=-4;
+  if(keys['d']) player1.dx=4;
+  player1.x+=player1.dx;
+  if(keys['w'] && (player1.onGround || player1.jumps<2)){ player1.dy=-8; player1.jumps++; }
+
+  if(gameMode==='2p'){
+    player2.dx=0;
+    if(keys['arrowleft']) player2.dx=-4;
+    if(keys['arrowright']) player2.dx=4;
+    player2.x+=player2.dx;
+    if(keys['arrowup'] && (player2.onGround || player2.jumps<2)){ player2.dy=-8; player2.jumps++; }
+  } else { aiMove(); }
+
+  handlePlayerCollision();
+}
+
+function handlePlayerCollision(){
+  const dx = player2.x - player1.x;
+  const dy = player2.y - player1.y;
+  const overlapX = (player1.w + player2.w)/2 - Math.abs(dx);
+  const overlapY = (player1.h + player2.h)/2 - Math.abs(dy);
+  if(overlapX>0 && overlapY>0){
+    if(dx>0) { player1.x -= overlapX/2; player2.x += overlapX/2; }
+    else { player1.x += overlapX/2; player2.x -= overlapX/2; }
+    if(dy>0) { player1.y -= overlapY/2; player2.y += overlapY/2; }
+    else { player1.y += overlapY/2; player2.y -= overlapY/2; }
+  }
+}
+
+function aiMove(){
+  const targetX = ball.x + (50*aiAggression);
+  if(Math.abs(targetX-player2.x)>5){ player2.dx = (targetX>player2.x?aiSpeed:-aiSpeed); player2.x+=player2.dx; }
+  if(ball.y<groundY-100 && player2.onGround && Math.random()<0.02*aiAggression){ player2.dy=-8; }
+  const dist=Math.abs(ball.x-player2.x);
+  if(dist<60 && player2.onGround){ player2.x+=(ball.x>player2.x?1:-1)*aiSpeed*0.8; }
+}
+
+function moveBall(){
+  ball.x+=ball.dx;
+  ball.y+=ball.dy;
+  ball.dy+=gravity*0.4;
+  if(ball.y+ball.r>groundY){ ball.y=groundY-ball.r; ball.dy*=-0.7; }
+  if(ball.y-ball.r<0){ ball.y=ball.r; ball.dy*=-0.7; }
+  if(ball.x-ball.r<0){ ball.x=ball.r; ball.dx*=-0.7; }
+  if(ball.x+ball.r>canvas.width){ ball.x=canvas.width-ball.r; ball.dx*=-0.7; }
+  ball.dx*=0.99; ball.dy*=0.99;
+}
+
+function collide(p){
+  const dx=(ball.x-(p.x+p.w/2));
+  const dy=(ball.y-(p.y+p.h/2));
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist<ball.r+p.w/2){
+    const hitForce=6+Math.abs(p.dx)*0.8;
+    const lift=-2-Math.abs(p.dx)*1.2;
+    ball.dx=(dx/dist)*hitForce;
+    ball.dy=lift;
+  }
+}
+
+function checkGoal(){
+  const goalHeight = 120; // bigger goals
+  const goalY = groundY - goalHeight;
+  if(ball.x-ball.r<=30 && ball.y+ball.r>=goalY){ player2.score++; resetPositions(); }
+  if(ball.x+ball.r>=canvas.width-30 && ball.y+ball.r>=goalY){ player1.score++; resetPositions(); }
+  if(player1.score>=10 || player2.score>=10) endGame();
+}
+
+function resetPositions(){
+  player1.x=100; player1.y=groundY-50; player1.jumps=0;
+  player2.x=770; player2.y=groundY-50; player2.jumps=0;
+  ball.x=450; ball.y=groundY-40; ball.dx=0; ball.dy=0;
+}
+
+function endGame(){
+  gameRunning=false;
+  alert(`${player1.score>=10?'Player 1':'Player 2'} wins!`);
+  location.reload();
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#006400"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#004400"; ctx.fillRect(0,groundY,canvas.width,30);
+  const goalHeight=120; // bigger
+  ctx.fillStyle="white";
+  ctx.fillRect(0,groundY-goalHeight,30,goalHeight);
+  ctx.fillRect(canvas.width-30,groundY-goalHeight,30,goalHeight);
+  [player1,player2].forEach(p=>{ ctx.fillStyle=p.color; ctx.fillRect(p.x,p.y,p.w,p.h); });
+  ctx.beginPath(); ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2); ctx.fillStyle=ball.color; ctx.fill();
+  ctx.fillStyle="white"; ctx.font="24px Arial";
+  ctx.fillText(`P1: ${player1.score}`,50,40);
+  ctx.fillText(`P2: ${player2.score}`,canvas.width-130,40);
+}
+
+function update(){
+  if(!gameRunning) return;
+  movePlayers();
+  [player1,player2].forEach(applyPhysics);
+  moveBall();
+  collide(player1); collide(player2);
+  checkGoal();
+  draw();
+  requestAnimationFrame(update);
+}
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
